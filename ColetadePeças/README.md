@@ -59,7 +59,12 @@ Abra `config.js` e cole o link: `apiUrl: "https://script.google.com/macros/s/XXX
 4. Em 1–2 min o link aparece: `https://SEU-USUARIO.github.io/inventario-robotica/`. Envie ao grupo.
 
 ### 4. Primeiro acesso
-Cada pessoa abre o link e digita a senha do grupo **uma vez** por aparelho. Na primeira vez, com a planilha vazia, o site oferece enviar as peças do `data.json` (são exemplos: aceite para testar e apague depois, ou recuse e cadastre as reais). Dá também para importar uma planilha/CSV em *Mais ▸ Importar*.
+Cada pessoa abre o link e digita a senha do grupo **uma vez** por aparelho. Com a planilha ligada, o site usa só os dados dela: as peças de exemplo do `data.json` nunca são enviadas. Dá também para importar uma planilha/CSV em *Mais ▸ Importar*.
+
+### Proteção dos dados da planilha
+- Um envio só pode excluir até **5 peças** (`MAX_EXCLUSOES_POR_ENVIO` no `Code.gs`). Se um aparelho com dados estranhos tentar apagar mais, a planilha recusa, o site avisa e devolve as peças.
+- O script grava por cima das linhas e só depois limpa as que sobraram. Se der erro no meio, a aba não fica vazia.
+- A planilha do Google guarda o **histórico de versões**: *Arquivo ▸ Histórico de versões ▸ Ver histórico* restaura qualquer momento anterior.
 
 ### 5. Etiquetas
 Imprima sempre a partir do **link publicado** (o QR leva o endereço da página aberta). Evite mudar o código de uma peça depois de etiquetada.

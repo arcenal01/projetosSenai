@@ -11,6 +11,9 @@ const ABA_LOCAIS = 'Locais';
 const ABA_CATS = 'Categorias';
 const CAB = ['Código', 'Nome', 'Quantidade', 'Local', 'Categoria', 'Observações', 'Contada', 'Status', 'ContadaEm', 'EditadoEm', 'Foto', 'FotoEm'];
 const PASTA_FOTOS = 'Fotos - Inventário Robótica'; // pasta criada no seu Google Drive
+// Proteção: um envio só pode excluir até esta quantidade de peças. Pelo site as peças são excluídas
+// uma a uma (com confirmação); um pedido para apagar muitas de uma vez é tratado como erro e recusado.
+const MAX_EXCLUSOES_POR_ENVIO = 5;
 
 /* Abrir o link do script no navegador só mostra esta mensagem (serve para testar). */
 function doGet() {
@@ -32,6 +35,9 @@ function doPost(e) {
     if (req.acao === 'foto') return saida(salvarFoto(req));
     prepararAbas();
     if (req.acao === 'sincronizar') {
+      if ((req.del || []).length > MAX_EXCLUSOES_POR_ENVIO) {
+        return saida({ ok: false, erro: 'exclusoes', qtd: req.del.length });
+      }
       gravarPecas(mesclarPecas(lerPecas(), req));
       ajustarLocais(req.addLocais, req.delLocais);
       adicionarCategorias(req.addCats);
@@ -169,14 +175,16 @@ function lerPecas() {
 
 function gravarPecas(pecas) {
   const sh = aba(ABA_PECAS), n = sh.getLastRow();
-  if (n > 1) sh.getRange(2, 1, n - 1, CAB.length).clearContent();
-  if (!pecas.length) return;
+  // grava por cima primeiro e só depois limpa as linhas que sobraram:
+  // se algo falhar no meio, as linhas antigas continuam lá (nunca fica uma aba vazia)
   const vals = pecas.map(function (p, i) {
     const r = i + 2;
     return [p.codigo, p.nome, p.quantidade, p.local, p.categoria, p.obs, p.contada == null ? '' : p.contada,
       '=IF(G' + r + '="","Pendente",IF(G' + r + '=C' + r + ',"Conferida","Divergente"))', p.contadaEm || '', p.editadoEm || '', p.foto || '', p.fotoEm || ''];
   });
-  sh.getRange(2, 1, vals.length, CAB.length).setValues(vals);
+  if (vals.length) sh.getRange(2, 1, vals.length, CAB.length).setValues(vals);
+  const sobra = (n - 1) - vals.length;
+  if (sobra > 0) sh.getRange(2 + vals.length, 1, sobra, CAB.length).clearContent();
 }
 
 function lerLocais() {

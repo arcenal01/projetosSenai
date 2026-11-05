@@ -162,9 +162,8 @@
     document.querySelectorAll('[data-sync-only]').forEach(b => { b.hidden = !SYNC; });
     document.querySelectorAll('.ajuda-sync').forEach(b => { b.hidden = !SYNC; });
     document.querySelectorAll('.ajuda-legacy').forEach(b => { b.hidden = SYNC; });
-    try { remote = await (await fetch('data.json', { cache: 'no-store' })).json(); } catch (e) { remote = null; }
-
     if (SYNC) {
+      // modo planilha: a planilha é a única fonte dos dados. O data.json (peças de exemplo) não é usado.
       let saved = null;
       try { saved = JSON.parse(localStorage.getItem(LS_KEY)); } catch (e) { /* ignora */ }
       if (saved && saved.data && Array.isArray(saved.data.pecas)) {
@@ -172,21 +171,13 @@
         if (saved.lastSynced) lastSynced = saved.lastSynced;
       }
       render();
-      const ok = await syncNow(true);
-      if (ok && state.pecas.length === 0 && remote && remote.pecas && remote.pecas.length) {
-        let recusou = false;
-        try { recusou = !!localStorage.getItem('inventario-oferta-recusada'); } catch (e) { /* ignora */ }
-        if (!recusou) {
-          if (confirm(`A planilha está vazia. Enviar para ela as ${remote.pecas.length} peça(s) do data.json?`)) {
-            const u = state.urlSite; state = normalizeState(remote); state.urlSite = u; touch();
-          } else { try { localStorage.setItem('inventario-oferta-recusada', '1'); } catch (e) { /* ignora */ } }
-        }
-      }
+      await syncNow(true);
       startSyncLoops();
       handleHash();
       return;
     }
 
+    try { remote = await (await fetch('data.json', { cache: 'no-store' })).json(); } catch (e) { remote = null; }
     let saved = null;
     try { saved = JSON.parse(localStorage.getItem(LS_KEY)); } catch (e) { /* ignora */ }
 
@@ -729,6 +720,15 @@
       const res = await api(body);
       if (!res.ok) {
         if (res.erro === 'senha') { try { localStorage.removeItem(SENHA_KEY); } catch (e) { /* ignora */ } syncState = 'senha'; }
+        else if (res.erro === 'exclusoes') {
+          // a planilha recusou apagar muitas peças de uma vez: devolve essas peças para este aparelho
+          const tem = new Set(state.pecas.map(p => p.codigo));
+          lastSynced.pecas.forEach(p => { if (!tem.has(p.codigo)) state.pecas.push({ ...p }); });
+          persist(); render();
+          alert(`Proteção da planilha: este aparelho tentou excluir ${res.qtd} peças de uma vez e isso foi bloqueado. As peças foram mantidas. Exclua uma de cada vez, se for mesmo o caso.`);
+          syncing = false; scheduleSync(500); updateStatus();
+          return false;
+        }
         else throw new Error(res.erro || 'erro');
       } else {
         ok = true; syncState = 'ok'; lastOkAt = new Date();
