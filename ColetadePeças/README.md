@@ -19,6 +19,24 @@ Sem a planilha configurada, o site funciona no "modo antigo" (só `data.json`, s
 
 **Limites:** cada gravação leva 1–2 s; quem souber o link do script **e** a senha pode alterar os dados (não é segurança bancária, é uma trava para o grupo); duas pessoas criando peças com o **mesmo código** ao mesmo tempo (muito raro) viram uma só; o Google limita o uso diário do Apps Script, mas o volume deste trabalho fica muito abaixo.
 
+## Fotos das peças
+- Em **+ Nova peça** ou **Editar**: *📷 Tirar foto* (abre a câmera no celular), *🖼️ Escolher imagem* ou *Remover foto*. A foto é enviada ao **Salvar**.
+- Peças sem foto mostram **📷 sem foto** no cartão: toque para adicionar. O filtro **Foto ▸ Sem foto** lista as que faltam.
+- O site reduz a foto (máx. 1280 px, JPEG) e a guarda no Google Drive de quem criou o script, na pasta **Fotos - Inventário Robótica**, compartilhada "qualquer pessoa com o link" (só leitura). A planilha recebe o link na coluna **Foto** (K); a coluna **FotoEm** (L) guarda a data da foto.
+- Enviar foto precisa de internet. Sem conexão, o site avisa e não salva até você tentar de novo (ou remover a foto).
+- A foto tem data própria: editar os outros dados da peça (inclusive num celular com o site antigo em cache) **não apaga a foto**.
+- Trocar ou excluir uma peça não apaga a foto antiga do Drive (limpe a pasta à mão se quiser).
+- Também dá para colar na coluna Foto da planilha o link de uma imagem do Drive (compartilhada por link) ou de qualquer imagem na internet.
+
+### Atualizar um script que já está em uso (sem perder dados)
+1. Por segurança: na planilha, **Arquivo ▸ Fazer uma cópia** (backup).
+2. **Extensões ▸ Apps Script**: **copie a linha `const SENHA = '...'`** do código atual. Apague tudo, cole o novo `planilha/Code.gs` e cole de volta a linha da senha. Salve.
+3. No menu de funções (ao lado de ▶ Executar), escolha **autorizarFotos** ▸ **Executar** ▸ autorize o acesso ao Google Drive.
+4. **Implantar ▸ Gerenciar implantações ▸ ✏️ ▸ Versão: Nova versão ▸ Implantar** (o link `/exec` continua o mesmo).
+5. Ao abrir o link `/exec` no navegador deve aparecer "API do inventário ativa (com fotos)".
+
+As peças existentes não mudam: o script só acrescenta as colunas **Foto** e **FotoEm** (K e L) na aba *Pecas*. Se essas colunas já estiverem ocupadas com outra coisa, ele para com uma mensagem de erro, sem apagar nada.
+
 ## Passo a passo
 
 ### 1. Planilha e script (use uma conta Google **pessoal**; contas de escola costumam bloquear o passo 4)

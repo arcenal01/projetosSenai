@@ -73,6 +73,13 @@
         <option value="divergente">Divergentes</option>
       </select>
     </label>
+    <label>Foto
+      <select id="fFoto">
+        <option value="">Todas</option>
+        <option value="sem">Sem foto</option>
+        <option value="com">Com foto</option>
+      </select>
+    </label>
     <div class="view-toggle" role="group" aria-label="Visualização">
       <button type="button" id="vLocal" class="btn small active">Por local</button>
       <button type="button" id="vLista" class="btn small">Lista</button>
@@ -109,13 +116,26 @@
         <select id="pLocal" required></select>
       </label>
     </div>
+    <div class="foto-field">
+      <span class="foto-lbl">Foto (opcional)</span>
+      <div class="foto-box">
+        <div id="pFotoPrev" class="foto-prev"></div>
+        <div class="foto-btns">
+          <button type="button" class="btn small" id="btnFotoCam">📷 Tirar foto</button>
+          <button type="button" class="btn small" id="btnFotoGal">🖼️ Escolher imagem</button>
+          <button type="button" class="btn small ghost" id="btnFotoDel">Remover foto</button>
+        </div>
+      </div>
+      <input type="file" id="pFotoCam" accept="image/*" capture="environment" hidden>
+      <input type="file" id="pFotoGal" accept="image/*" hidden>
+    </div>
     <label>Observações (opcional)
       <textarea id="pObs" rows="3" maxlength="500"></textarea>
     </label>
     <p id="erroPeca" class="erro" hidden></p>
     <div class="dlg-actions">
       <button type="button" class="btn ghost" data-close>Cancelar</button>
-      <button type="submit" class="btn primary">Salvar</button>
+      <button type="submit" class="btn primary" id="btnSalvarPeca">Salvar</button>
     </div>
   </form>
 </dialog>

@@ -92,8 +92,43 @@
       obs: String(p.obs ?? '').trim(),
       contada: p.contada == null || p.contada === '' ? null : toInt(p.contada),
       contadaEm: p.contadaEm || null,
-      editadoEm: p.editadoEm || null
+      editadoEm: p.editadoEm || null,
+      foto: String(p.foto ?? '').trim(),
+      fotoEm: p.fotoEm || null
     };
+  }
+
+  // ---------- fotos ----------
+  // p.foto guarda um link (Google Drive ou qualquer endereço de imagem) ou, no modo antigo, a própria imagem (data:...).
+  const driveId = f => { const m = /\/d\/([\w-]{10,})|[?&]id=([\w-]{10,})/.exec(f || ''); return m ? (m[1] || m[2]) : null; };
+  function fotoSrc(f, w) {
+    if (!f) return '';
+    const id = /^https?:\/\/[^/]*(drive|docs)\.google\.com\//.test(f) ? driveId(f) : null;
+    return id ? `https://drive.google.com/thumbnail?id=${id}&sz=w${w}` : f;
+  }
+  function fotoImg(f, w, extra = '') {
+    const id = /^https?:\/\/[^/]*(drive|docs)\.google\.com\//.test(f) ? driveId(f) : null;
+    // se o "thumbnail" do Drive falhar, tenta o outro endereço público do Drive
+    const fb = id ? ` onerror="this.onerror=null;this.src='https://lh3.googleusercontent.com/d/${id}=w${w}'"` : '';
+    return `<img src="${esc(fotoSrc(f, w))}" alt="Foto da peça" loading="lazy" decoding="async"${fb} ${extra}>`;
+  }
+  // Reduz a foto (o celular tira fotos de vários MB) e converte para JPEG.
+  function compressImage(file, max, quality) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * s)), h = Math.max(1, Math.round(img.naturalHeight * s));
+        const c = document.createElement('canvas'); c.width = w; c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('formato')); };
+      img.src = url;
+    });
   }
 
   // Mescla outro catálogo neste: por peça, vale a alteração mais recente.
@@ -113,6 +148,9 @@
       }
       if ((ip.contadaEm || '') > (p.contadaEm || '')) {
         p.contada = ip.contada; p.contadaEm = ip.contadaEm; changed = true;
+      }
+      if ((ip.fotoEm || '') > (p.fotoEm || '')) {
+        p.foto = ip.foto; p.fotoEm = ip.fotoEm; changed = true;
       }
       if (changed) upd++;
     }
@@ -179,11 +217,12 @@
   // ---------- filtros ----------
   function filtered() {
     const terms = norm($('#busca').value).split(/\s+/).filter(Boolean);
-    const fl = $('#fLocal').value, fc = $('#fCat').value, fs = $('#fStatus').value;
+    const fl = $('#fLocal').value, fc = $('#fCat').value, fs = $('#fStatus').value, ff = $('#fFoto').value;
     return state.pecas.filter(p => {
       if (fl && !(p.local === fl || p.local.startsWith(fl + ' > '))) return false;
       if (fc && p.categoria !== fc) return false;
       if (fs && statusOf(p) !== fs) return false;
+      if (ff && (ff === 'com') !== !!p.foto) return false;
       if (terms.length) {
         const hay = norm([p.codigo, p.nome, p.categoria, p.local, p.obs].join(' | '));
         if (!terms.every(t => hay.includes(t))) return false;
@@ -260,9 +299,16 @@
     const st = statusOf(p);
     return `<article class="card s-${st}" data-code="${esc(p.codigo)}">
       <div class="card-top"><span class="code">${esc(p.codigo)}</span><span class="badge">${STATUS_TXT[st]}</span></div>
-      <h3>${esc(p.nome)}</h3>
-      <p class="meta">${esc(p.categoria)} · ${esc(p.local.replace(/ > /g, ' › '))}</p>
-      <div class="qty">Esperado: <b>${p.quantidade}</b></div>
+      <div class="card-body">
+        ${p.foto
+          ? `<button type="button" class="thumb" data-act="detail" title="Ver foto e detalhes">${fotoImg(p.foto, 200)}</button>`
+          : `<button type="button" class="thumb nofoto" data-act="foto" title="Adicionar foto">📷<small>sem foto</small></button>`}
+        <div class="card-txt">
+          <h3>${esc(p.nome)}</h3>
+          <p class="meta">${esc(p.categoria)} · ${esc(p.local.replace(/ > /g, ' › '))}</p>
+          <div class="qty">Esperado: <b>${p.quantidade}</b></div>
+        </div>
+      </div>
       <div class="count-row">
         <input type="number" min="0" step="1" inputmode="numeric" placeholder="Contado" aria-label="Quantidade contada de ${esc(p.codigo)}" value="${p.contada ?? ''}">
         <button class="btn small" type="button" data-act="save">Salvar</button>
@@ -314,7 +360,7 @@
 
   // ---------- formulário ----------
   const NOVO = '__novo__';
-  function openForm(code) {
+  function openForm(code, focoFoto = false) {
     editingCode = code || null;
     const p = code ? find(code) : null;
     $('#tituloPeca').textContent = p ? 'Editar peça' : 'Nova peça';
@@ -323,6 +369,8 @@
     $('#pCat').insertAdjacentHTML('beforeend', `<option value="${NOVO}">+ Nova categoria…</option>`);
     fillSelect($('#pLocal'), [...state.locais].sort(collator.compare), null, false);
     $('#pLocal').insertAdjacentHTML('beforeend', `<option value="${NOVO}">+ Novo local…</option>`);
+    fotoAtual = p ? (p.foto || '') : ''; fotoNova = null; fotoRemovida = false;
+    renderFotoPrev();
     if (p) {
       $('#pCat').value = p.categoria; $('#pLocal').value = p.local;
       $('#pCodigo').value = p.codigo; $('#pNome').value = p.nome;
@@ -337,7 +385,33 @@
     }
     $('#dlgDetalhe').close();
     $('#dlgPeca').showModal();
-    $('#pNome').focus();
+    if (focoFoto) $('#btnFotoCam').focus(); else $('#pNome').focus();
+  }
+
+  // estado da foto no formulário
+  let fotoAtual = '', fotoNova = null, fotoRemovida = false, salvando = false;
+  function renderFotoPrev() {
+    const f = fotoNova || (fotoRemovida ? '' : fotoAtual);
+    $('#pFotoPrev').innerHTML = f ? fotoImg(f, 400) : '<span>Sem foto</span>';
+    $('#pFotoPrev').classList.toggle('vazia', !f);
+    $('#btnFotoDel').hidden = !f;
+    $('#btnFotoCam').textContent = f ? '📷 Tirar outra' : '📷 Tirar foto';
+    $('#btnFotoGal').textContent = f ? '🖼️ Trocar imagem' : '🖼️ Escolher imagem';
+  }
+  async function onFotoEscolhida(ev) {
+    const file = ev.target.files && ev.target.files[0];
+    ev.target.value = '';
+    if (!file) return;
+    $('#pFotoPrev').innerHTML = '<span>Processando…</span>';
+    try {
+      // modo planilha: a foto vai para o Drive (pode ser maior); modo antigo: fica dentro dos dados, então bem pequena
+      fotoNova = SYNC ? await compressImage(file, 1280, 0.82) : await compressImage(file, 480, 0.6);
+      fotoRemovida = false;
+      $('#erroPeca').hidden = true;
+    } catch (e) {
+      const er = $('#erroPeca'); er.textContent = 'Não consegui abrir essa imagem. Use uma foto JPG ou PNG.'; er.hidden = false;
+    }
+    renderFotoPrev();
   }
 
   function onSelectNovo(sel, tipo) {
@@ -361,8 +435,9 @@
     return true;
   }
 
-  function submitForm(ev) {
+  async function submitForm(ev) {
     ev.preventDefault();
+    if (salvando) return;
     const err = msg => { const e = $('#erroPeca'); e.textContent = msg; e.hidden = false; };
     const codigo = $('#pCodigo').value.trim().toUpperCase().replace(/\s+/g, '-');
     const nome = $('#pNome').value.trim();
@@ -373,11 +448,37 @@
     if (dup && norm(dup.codigo) !== norm(editingCode || '')) return err(`O código ${codigo} já existe (${dup.nome}). Use outro código.`);
     if ($('#pCat').value === NOVO || $('#pLocal').value === NOVO) return err('Escolha a categoria e o local.');
     const dados = { nome, quantidade: qtd, local: $('#pLocal').value, categoria: $('#pCat').value, obs: $('#pObs').value.trim() };
+
+    // foto: null = não mudou; '' = removida; texto = nova foto (link do Drive ou, no modo antigo, a imagem)
+    let foto = null;
+    if (fotoNova) {
+      if (SYNC) {
+        if (!getSenha()) return err('Informe primeiro a senha do grupo (toque no indicador ● no topo) e salve de novo.');
+        const btn = $('#btnSalvarPeca');
+        salvando = true; btn.disabled = true; btn.textContent = 'Enviando foto…';
+        try {
+          const r = await api({ acao: 'foto', codigo, dados: fotoNova.split(',')[1] }, 90000);
+          if (r.ok && r.url) foto = r.url;
+          else if (r.ok) return err('O script da planilha ainda não aceita fotos: atualize o Code.gs no Apps Script (veja o README).');
+          else if (r.erro === 'senha') return err('Senha do grupo incorreta. Toque no indicador ● no topo para digitar de novo.');
+          else return err('Não foi possível enviar a foto: ' + (r.erro || 'erro desconhecido'));
+        } catch (e) {
+          return err('Sem conexão: a foto não foi enviada. Tente de novo quando a internet voltar (ou remova a foto para salvar só os dados).');
+        } finally {
+          salvando = false; btn.disabled = false; btn.textContent = 'Salvar';
+        }
+      } else foto = fotoNova;
+    } else if (fotoRemovida) foto = '';
+    if (!$('#dlgPeca').open) return; // cancelou enquanto a foto era enviada
+
     if (editingCode) {
       const p = find(editingCode);
+      if (!p) return err('Essa peça foi excluída enquanto você editava.');
       Object.assign(p, dados, { codigo, editadoEm: now() });
+      if (foto !== null) { p.foto = foto; p.fotoEm = now(); }
     } else {
-      state.pecas.push({ codigo, ...dados, contada: null, contadaEm: null, editadoEm: now() });
+      if (find(codigo)) return err(`O código ${codigo} acabou de ser usado por outra peça. Use outro código.`);
+      state.pecas.push({ codigo, ...dados, contada: null, contadaEm: null, editadoEm: now(), foto: foto || '', fotoEm: foto ? now() : null });
     }
     $('#dlgPeca').close();
     touch();
@@ -423,6 +524,9 @@
           <h2 style="margin:6px 0 0">${esc(p.nome)}</h2>
         </div>
       </div>
+      ${p.foto
+        ? `<div class="det-foto">${/^https?:/.test(p.foto) ? `<a href="${esc(p.foto)}" target="_blank" rel="noopener" title="Abrir a foto em tamanho grande">${fotoImg(p.foto, 900)}</a>` : fotoImg(p.foto, 900)}</div>`
+        : `<div class="det-foto vazia" data-code="${esc(p.codigo)}"><button type="button" class="btn small" data-act="dfoto">📷 Adicionar foto</button></div>`}
       <dl class="det-list">
         <dt>Categoria</dt><dd>${esc(p.categoria)}</dd>
         <dt>Local</dt><dd>${esc(p.local.replace(/ > /g, ' › '))}</dd>
@@ -469,9 +573,10 @@
   }
   function exportCsv() {
     const q = v => { v = String(v ?? ''); return /[;"\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
-    const head = ['Código', 'Nome', 'Quantidade', 'Local', 'Categoria', 'Observações', 'Contada', 'Status'];
+    const head = ['Código', 'Nome', 'Quantidade', 'Local', 'Categoria', 'Observações', 'Contada', 'Status', 'Foto'];
     const rows = [...state.pecas].sort((a, b) => collator.compare(a.local, b.local) || collator.compare(a.codigo, b.codigo))
-      .map(p => [p.codigo, p.nome, p.quantidade, p.local, p.categoria, p.obs, p.contada ?? '', STATUS_TXT[statusOf(p)]].map(q).join(';'));
+      .map(p => [p.codigo, p.nome, p.quantidade, p.local, p.categoria, p.obs, p.contada ?? '', STATUS_TXT[statusOf(p)],
+        /^https?:/.test(p.foto || '') ? p.foto : (p.foto ? '(foto só no aparelho)' : '')].map(q).join(';'));
     download('inventario-robotica.csv', '﻿' + [head.join(';'), ...rows].join('\r\n'), 'text/csv;charset=utf-8');
     toast('CSV exportado (abre direto no Excel).');
   }
@@ -518,7 +623,7 @@
       const ct = get(r, 'contada');
       const p = find(codigo);
       if (p) { Object.assign(p, dados, { editadoEm: now() }); if (ct !== '') { p.contada = toInt(ct); p.contadaEm = now(); } upd++; }
-      else { state.pecas.push({ codigo, ...dados, contada: ct === '' ? null : toInt(ct), contadaEm: ct === '' ? null : now(), editadoEm: now() }); add++; }
+      else { state.pecas.push({ codigo, ...dados, contada: ct === '' ? null : toInt(ct), contadaEm: ct === '' ? null : now(), editadoEm: now(), foto: '', fotoEm: null }); add++; }
     }
     return { add, upd, skip };
   }
@@ -569,7 +674,7 @@
   }
 
   // ---------- sincronização com a planilha ----------
-  const pkey = p => [p.codigo, p.nome, p.quantidade, p.local, p.categoria, p.obs, p.contada, p.contadaEm, p.editadoEm].join('\u0001');
+  const pkey = p => [p.codigo, p.nome, p.quantidade, p.local, p.categoria, p.obs, p.contada, p.contadaEm, p.editadoEm, p.foto || '', p.fotoEm || ''].join('\u0001');
   const snap = () => ({ pecas: state.pecas.map(p => ({ ...p })), locais: [...state.locais], categorias: state.categorias.map(c => ({ ...c })) });
   const getSenha = () => { try { return localStorage.getItem(SENHA_KEY) || ''; } catch (e) { return ''; } };
 
@@ -588,8 +693,8 @@
   }
   const pendingCount = () => { const d = diff(); return d.up.length + d.del.length + d.addLocais.length + d.delLocais.length + d.addCats.length; };
 
-  async function api(body) {
-    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 25000);
+  async function api(body, ms = 25000) {
+    const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
     try {
       // corpo em texto simples evita o "preflight" de CORS, que o Apps Script não aceita
       const r = await fetch(CFG.apiUrl, { method: 'POST', body: JSON.stringify({ senha: getSenha(), ...body }), signal: ctrl.signal });
@@ -664,8 +769,8 @@
   // ---------- eventos ----------
   function bind() {
     $('#busca').addEventListener('input', render);
-    ['#fLocal', '#fCat', '#fStatus'].forEach(s => $(s).addEventListener('change', render));
-    $('#btnLimpar').addEventListener('click', () => { $('#busca').value = ''; $('#fLocal').value = ''; $('#fCat').value = ''; $('#fStatus').value = ''; render(); });
+    ['#fLocal', '#fCat', '#fStatus', '#fFoto'].forEach(s => $(s).addEventListener('change', render));
+    $('#btnLimpar').addEventListener('click', () => { $('#busca').value = ''; $('#fLocal').value = ''; $('#fCat').value = ''; $('#fStatus').value = ''; $('#fFoto').value = ''; render(); });
     $('#vLocal').addEventListener('click', () => { view = 'local'; $('#vLocal').classList.add('active'); $('#vLista').classList.remove('active'); render(); });
     $('#vLista').addEventListener('click', () => { view = 'lista'; $('#vLista').classList.add('active'); $('#vLocal').classList.remove('active'); render(); });
     $('#btnNova').addEventListener('click', () => openForm(null));
@@ -680,6 +785,7 @@
       else if (act === 'ok') { const p = find(code); setCount(code, p.quantidade); }
       else if (act === 'detail') openDetail(code);
       else if (act === 'edit') openForm(code);
+      else if (act === 'foto') openForm(code, true);
     });
     $('#lista').addEventListener('keydown', ev => {
       if (ev.key === 'Enter' && ev.target.matches('.count-row input')) { ev.preventDefault(); setCount(ev.target.closest('.card').dataset.code, ev.target.value); }
@@ -693,6 +799,7 @@
       else if (act === 'dok') { setCount(code, find(code).quantidade); openDetail(code); }
       else if (act === 'dreset') { setCount(code, ''); openDetail(code); }
       else if (act === 'dedit') openForm(code);
+      else if (act === 'dfoto') openForm(code, true);
       else if (act === 'ddel') deletePiece(code);
       else if (act === 'dlabel') printLabels([find(code)]);
     });
@@ -713,6 +820,11 @@
       if (!codigoTocado && !editingCode) $('#pCodigo').value = nextCode(prefixOf($('#pCat').value));
     });
     $('#pLocal').addEventListener('change', () => onSelectNovo($('#pLocal'), 'local'));
+    $('#btnFotoCam').addEventListener('click', () => $('#pFotoCam').click());
+    $('#btnFotoGal').addEventListener('click', () => $('#pFotoGal').click());
+    $('#pFotoCam').addEventListener('change', onFotoEscolhida);
+    $('#pFotoGal').addEventListener('change', onFotoEscolhida);
+    $('#btnFotoDel').addEventListener('click', () => { fotoNova = null; fotoRemovida = true; renderFotoPrev(); });
     $('#btnGerar').addEventListener('click', () => { $('#pCodigo').value = nextCode(prefixOf($('#pCat').value)); codigoTocado = false; });
 
     // menu
