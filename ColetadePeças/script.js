@@ -729,11 +729,12 @@
           syncing = false; scheduleSync(500); updateStatus();
           return false;
         }
+        else if (res.erro === 'ocupado') { syncing = false; syncState = 'pending'; updateStatus(); scheduleSync(3000 + Math.random() * 4000); return false; } // planilha gravando outro envio: tenta de novo já já
         else throw new Error(res.erro || 'erro');
       } else {
         ok = true; syncState = 'ok'; lastOkAt = new Date();
         if (rev === sentRev && !busyUI()) adopt(res);
-        else { lastSynced = sent; persist(); scheduleSync(2500); } // usuário mexendo: puxa a versão da planilha depois
+        else { lastSynced = sent; persist(); if (rev !== sentRev) scheduleSync(2500); } // usuário mexendo: puxa a versão da planilha depois (janela aberta: o ciclo de 15 s puxa)
       }
     } catch (e) { console.warn('Falha ao sincronizar', e); syncState = 'erro'; }
     syncing = false; updateStatus();

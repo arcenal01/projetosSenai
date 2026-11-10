@@ -27,27 +27,38 @@ function autorizarFotos() {
 }
 
 function doPost(e) {
-  const lock = LockService.getScriptLock();
+  let lock = null;
   try {
-    lock.waitLock(25000); // uma gravação por vez: ninguém atropela ninguém
     const req = JSON.parse(e.postData.contents);
     if (req.senha !== SENHA) return saida({ ok: false, erro: 'senha' });
+    // foto só mexe no Drive: não precisa esperar a fila da planilha
     if (req.acao === 'foto') return saida(salvarFoto(req));
-    prepararAbas();
+    // só a gravação entra na fila (uma por vez: ninguém atropela ninguém); ler não trava os outros
     if (req.acao === 'sincronizar') {
       if ((req.del || []).length > MAX_EXCLUSOES_POR_ENVIO) {
         return saida({ ok: false, erro: 'exclusoes', qtd: req.del.length });
       }
-      gravarPecas(mesclarPecas(lerPecas(), req));
-      ajustarLocais(req.addLocais, req.delLocais);
-      adicionarCategorias(req.addCats);
+      lock = LockService.getScriptLock();
+      if (!lock.tryLock(15000)) { lock = null; return saida({ ok: false, erro: 'ocupado' }); }
+      prepararAbas();
+      const atuais = lerPecas(), novas = mesclarPecas(atuais.map(function (p) { return Object.assign({}, p); }), req);
+      if (!mesmasPecas(atuais, novas)) gravarPecas(novas); // nada mudou: não regrava a aba inteira
+      if ((req.addLocais || []).length || (req.delLocais || []).length) ajustarLocais(req.addLocais, req.delLocais);
+      if ((req.addCats || []).length) adicionarCategorias(req.addCats);
+    } else {
+      prepararAbas();
     }
     return saida({ ok: true, pecas: lerPecas(), locais: lerLocais(), categorias: lerCategorias() });
   } catch (err) {
     return saida({ ok: false, erro: String(err) });
   } finally {
-    try { lock.releaseLock(); } catch (x) { /* ignora */ }
+    if (lock) { try { lock.releaseLock(); } catch (x) { /* ignora */ } }
   }
+}
+
+function mesmasPecas(a, b) {
+  const k = function (p) { return JSON.stringify(normalizar(p)); };
+  return a.length === b.length && a.every(function (p, i) { return k(p) === k(b[i]); });
 }
 
 function saida(obj) {
